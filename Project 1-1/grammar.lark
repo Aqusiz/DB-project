@@ -55,6 +55,7 @@ query : create_table_query
       | insert_query
       | drop_table_query
       | desc_query
+      | show_tables_query
 
 
 // CREATE TABLE
@@ -80,6 +81,8 @@ column_name : IDENTIFIER
 drop_table_query: DROP TABLE table_name
 
 desc_query: DESC table_name
+
+show_tables_query: SHOW TABLES
 
 // SELECT
 select_query : SELECT select_list table_expression
