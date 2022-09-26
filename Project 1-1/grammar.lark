@@ -78,11 +78,11 @@ column_name : IDENTIFIER
 
 
 // DROP TABLE, DESC, SHOW TABLES
-drop_table_query: DROP TABLE table_name
+drop_table_query : DROP TABLE table_name
 
-desc_query: DESC table_name
+desc_query : DESC table_name
 
-show_tables_query: SHOW TABLES
+show_tables_query : SHOW TABLES
 
 // SELECT
 select_query : SELECT select_list table_expression
