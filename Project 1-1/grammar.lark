@@ -56,6 +56,7 @@ query : create_table_query
       | drop_table_query
       | desc_query
       | show_tables_query
+      | delete_query
 
 
 // CREATE TABLE
@@ -115,5 +116,6 @@ insert_query : INSERT INTO table_name (column_name_list)* VALUES value_list
 value_list : LP comparable_value ("," comparable_value)* RP
 
 // DELETE
+delete_query : DELETE FROM table_name [where_clause]
 
 // UPDATE TABLES
