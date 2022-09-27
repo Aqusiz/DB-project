@@ -1,10 +1,16 @@
-from lark import Lark, Transformer
+from lark import Lark, Transformer, exceptions
 
 MY_PROMPT = "DB_2017-16140> "
 
 class T(Transformer):
     def create_table_query(self, items):
-        return
+        print("'CREATE TABLE' requested")
+    
+    def drop_table_query(self, items):
+        print("'DROP TABLE' requested")
+
+    def EXIT(self, items):
+        raise SystemExit
 
 # 쿼리 규칙
 # 1. 쿼리는 항상 ;(세미콜론)으로 끝난다.
@@ -13,15 +19,23 @@ class T(Transformer):
 # 4. 쿼리에 오류가 없는 경우 (해당 쿼리) requestd를 출력하고, 에러가 발생한 경우 Syntax error를 출력한다.
 def main():
     with open("grammar.lark") as file:
-        sql_parser = Lark(file.read(), start="command", lexer="basic")
+        sql_parser = Lark(file.read(), start="command", parser="lalr", transformer=T())
     
     while(1):
-        queries = []
-        query = input(MY_PROMPT)
-        while(";" not in query):
-            text = input()
-            query += text
-        queries = [q.strip() for q in query.split(";")]
+        text = input(MY_PROMPT)
+        while(";" not in text):
+            text += " " + input()
+
+        queries = [query.strip() + ";" for query in text.split(";") if query]
+        for query in queries:
+            try:
+                sql_parser.parse(query)
+            except exceptions.UnexpectedToken as e:
+                print(e.token)
+                print("Syntax error")
+                break
+            except SystemExit:
+                exit()
 
 
 if __name__ == "__main__":
