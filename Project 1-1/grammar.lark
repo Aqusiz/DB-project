@@ -45,6 +45,7 @@ INSERT : "insert"i
 INTO : "into"i
 VALUES : "values"i
 DELETE : "delete"i
+SET : "set"i
 
 
 // QUERY
@@ -119,3 +120,4 @@ value_list : LP comparable_value ("," comparable_value)* RP
 delete_query : DELETE FROM table_name [where_clause]
 
 // UPDATE TABLES
+update_query : UPDATE table_name SET column_name COMP_OP comparable_value [where_clause]
