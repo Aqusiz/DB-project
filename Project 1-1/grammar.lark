@@ -46,6 +46,7 @@ INTO : "into"i
 VALUES : "values"i
 DELETE : "delete"i
 SET : "set"i
+UPDATE : "update"i
 
 
 // QUERY
@@ -58,6 +59,7 @@ query : create_table_query
       | desc_query
       | show_tables_query
       | delete_query
+      | update_query
 
 
 // CREATE TABLE
@@ -114,7 +116,8 @@ null_operation : IS [NOT] NULL
 
 // INSERT
 insert_query : INSERT INTO table_name (column_name_list)* VALUES value_list
-value_list : LP comparable_value ("," comparable_value)* RP
+value : comparable_value | NULL
+value_list : LP value ("," value)* RP
 
 // DELETE
 delete_query : DELETE FROM table_name [where_clause]
