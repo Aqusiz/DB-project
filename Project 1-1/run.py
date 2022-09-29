@@ -4,10 +4,28 @@ MY_PROMPT = "DB_2017-16140> "
 
 class T(Transformer):
     def create_table_query(self, items):
-        print("'CREATE TABLE' requested")
-    
+        print(MY_PROMPT + "'CREATE TABLE' requested")
+
     def drop_table_query(self, items):
-        print("'DROP TABLE' requested")
+        print(MY_PROMPT + "'DROP TABLE' requested")
+
+    def desc_query(self, items):
+        print(MY_PROMPT + "'DESC' requested")
+
+    def show_tables_query(self, items):
+        print(MY_PROMPT + "'SHOW TABLES' requested")
+
+    def select_query(self, items):
+        print(MY_PROMPT + "'SELECT' requested")
+
+    def insert_query(self, items):
+        print(MY_PROMPT + "'INSERT' requested")
+
+    def delete_query(self, items):
+        print(MY_PROMPT + "'DELETE' requested")
+
+    def update_query(self, items):
+        print(MY_PROMPT + "'UPDATE' requested")
 
     def EXIT(self, items):
         raise SystemExit
@@ -30,8 +48,7 @@ def main():
         for query in queries:
             try:
                 sql_parser.parse(query)
-            except exceptions.UnexpectedToken as e:
-                print(e.token)
+            except exceptions.UnexpectedToken:
                 print("Syntax error")
                 break
             except SystemExit:
