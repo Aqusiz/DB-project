@@ -115,7 +115,7 @@ null_operation : IS [NOT] NULL
 
 
 // INSERT
-insert_query : INSERT INTO table_name (column_name_list)* VALUES value_list
+insert_query : INSERT INTO table_name (column_name_list)? VALUES value_list
 value : comparable_value | NULL
 value_list : LP value ("," value)* RP
 
