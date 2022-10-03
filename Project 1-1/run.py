@@ -49,7 +49,7 @@ def main():
             try:
                 sql_parser.parse(query)
             except exceptions.UnexpectedToken:
-                print("Syntax error")
+                print(MY_PROMPT + "Syntax error")
                 break
             except SystemExit:
                 exit()
