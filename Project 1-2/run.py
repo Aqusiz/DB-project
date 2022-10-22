@@ -14,18 +14,19 @@ class TreeParser():
     def parse(self, root):
         if root.data == "table_element_list":
             return self.parse_table_element_list(root)
-    
+    # Build table schema dictinary and return it
     def parse_table_element_list(self, root):
-        col_dict = {}
+        table_dict = {"columns": {}}
+        # parse tree into column_definition, primary_key_constraint, foreign_key_constraint
         col_defs = root.find_data("column_definition")
         pk_constraint = list(root.find_data("primary_key_constraint"))
-        ref_constraint = root.find_data("referential_constraint")
+        ref_constraints = root.find_data("referential_constraint")
         # parse column definitions
         for col_def in col_defs:
             col_name, col_type, col_nullable = self.parse_column_definition(col_def)
-            if col_name in col_dict:
+            if col_name in table_dict["columns"]:
                 raise Exception("DuplicateColumnDefError")
-            col_dict[col_name] = {
+            table_dict["columns"][col_name] = {
                 "type": col_type, 
                 "nullable": col_nullable,
                 "primary_key": False,
@@ -36,21 +37,27 @@ class TreeParser():
             raise Exception("DuplicatePrimaryKeyDefError")
         pk_list = self.parse_primary_key_constraint(pk_constraint[0])
         for pk in pk_list:
-            if pk not in col_dict:
+            if pk not in table_dict["columns"]:
                 raise Exception("NonExistingColumnDefError("+pk+")")
-            col_dict[pk]["nullable"] = False
-            col_dict[pk]["primary_key"] = True
+            table_dict["columns"][pk]["nullable"] = False
+            table_dict["columns"][pk]["primary_key"] = True
         # parse foreign key constraint
-        for ref_con in ref_constraint:
-            ref_name, ref_table_name, ref_col_name = self.parse_referential_constraint(ref_con)
-            if ref_name not in col_dict:
-                raise Exception("NonExistingColumnDefError("+ref_name+")")
-            col_dict[ref_name]["references"] = ref_table_name+"."+ref_col_name
+        for ref_con in ref_constraints:
+            refer_info = self.parse_referential_constraint(ref_con)
+            for col_name, ref_name in zip(refer_info["col_names"], refer_info["ref_names"]):
+                if col_name not in table_dict["columns"]:
+                    raise Exception("NonExistingColumnDefError("+col_name+")")
+                table_dict["columns"][col_name]["references"] = refer_info["ref_table_name"]+"."+ref_name
 
-        return col_dict
+        table_dict["referenced_by"] = []
+        table_dict["pk_list"] = pk_list
+        return table_dict
 
     def parse_column_definition(self, root):
         col_name = root.children[0].children[0].value
+        for token in root.children[1].children:
+            if token.type == "INT" and int(token.value) < 1:
+                raise Exception("CharLengthError")
         col_type = "".join(x.value for x in root.children[1].children)
         col_nullable = (root.children[2] is None)
         
@@ -79,8 +86,20 @@ class TreeParser():
         return pk_list
 
     def parse_referential_constraint(self, root):
-        
-        return col_name, ref_table_name, ref_col_name
+        col_name_list = root.children[2].find_data("column_name")
+        col_names = [x.children[0].value for x in col_name_list]
+
+        ref_table_name = root.children[4].children[0].value
+
+        ref_name_list = root.children[5].find_data("column_name")
+        ref_names = [x.children[0].value for x in ref_name_list]
+
+        refer_info = {
+            "col_names": col_names,
+            "ref_table_name": ref_table_name,
+            "ref_names": ref_names
+        }
+        return refer_info
 
 class T(Transformer):
     # items[0] == Token "CREATE"
@@ -88,16 +107,43 @@ class T(Transformer):
     # items[2] == Tree "table_name"
     # items[3] == Tree "table_element_list"
     def create_table_query(self, items):
+        print(MY_PROMPT + "'CREATE TABLE' requested")
         table_name = items[2].children[0].value
         tables = pickle.loads(catalogDB.get(b"tables"))
+        # check if table already exists
         if table_name in tables:
             raise Exception("TableExistenceError")
         tables.append(table_name)
-
-        col_dict = TreeParser().parse(items[3])
+        # parse query and create table schema dictionary
+        table_dict = TreeParser().parse(items[3])
+        # check referential integrity
+        referenced_table_dict = {}
+        for col_name, col_info in table_dict["columns"].items():
+            if col_info["references"] is not None:
+                ref_table_name, ref_col_name = col_info["references"].split(".")
+                if ref_table_name not in tables:
+                    raise Exception("ReferenceTableExistenceError")
+                if ref_table_name not in referenced_table_dict:
+                    referenced_table_dict[ref_table_name] = pickle.loads(catalogDB.get(ref_table_name.encode()))
+                    referenced_table_dict[ref_table_name]["referenced_number"] = 0
+                else:
+                    referenced_table_dict[ref_table_name]["referenced_number"] += 1
+                if ref_col_name not in referenced_table_dict[ref_table_name]["columns"]:
+                    raise Exception("ReferenceColumnExistenceError")
+                if not referenced_table_dict[ref_table_name]["columns"][ref_col_name]["primary_key"]:
+                    raise Exception("ReferenceNonPrimaryKeyError")
+                if col_info["type"] != referenced_table_dict[ref_table_name]["columns"][ref_col_name]["type"]:
+                    raise Exception("ReferenceTypeError")
+        # update catalogDB
+        for ref_name, ref_table_info in referenced_table_dict.items():
+            if ref_table_info["referenced_number"] != len(ref_table_info["pk_list"]):
+                raise Exception("ReferenceNonPrimaryKeyError")
+            del(ref_table_info["referenced_number"])
+            ref_table_info["referenced_by"].append(table_name)
+            catalogDB.put(ref_name.encode(), pickle.dumps(ref_table_info))
 
         catalogDB.put(b"tables", pickle.dumps(tables))
-        catalogDB.put(table_name.encode(), pickle.dumps(col_dict))
+        catalogDB.put(table_name.encode(), pickle.dumps(table_dict))
 
         print(pickle.loads(catalogDB.get(b"tables")))
         print(pickle.loads(catalogDB.get(table_name.encode())))
