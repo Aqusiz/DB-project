@@ -107,7 +107,6 @@ class T(Transformer):
     # items[2] == Tree "table_name"
     # items[3] == Tree "table_element_list"
     def create_table_query(self, items):
-        print(MY_PROMPT + "'CREATE TABLE' requested")
         table_name = items[2].children[0].value
         tables = pickle.loads(catalogDB.get(b"tables"))
         # check if table already exists
@@ -145,20 +144,55 @@ class T(Transformer):
         catalogDB.put(b"tables", pickle.dumps(tables))
         catalogDB.put(table_name.encode(), pickle.dumps(table_dict))
 
-        print(pickle.loads(catalogDB.get(b"tables")))
-        print(pickle.loads(catalogDB.get(table_name.encode())))
+        print(MY_PROMPT + "'"+table_name+"'" + " table is created")
         
     # items[0] == Token "DROP"
     # items[1] == Token "TABLE"
     # items[2] == Tree "table_name"
     def drop_table_query(self, items):
-        print(MY_PROMPT + "'DROP TABLE' requested")
+        table_name = items[2].children[0].value
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        # check if table exists
+        if table_name not in tables:
+            print(MY_PROMPT + "No such table")
+            return
+        target = pickle.loads(catalogDB.get(table_name.encode()))
+        # check if table is referenced by other tables
+        if len(target["referenced_by"]) != 0:
+            print(MY_PROMPT + "Drop table has failed: '" + table_name +"' is referenced by other table")
+            return
+        # update catalogDB
+        tables.remove(table_name)
+        catalogDB.put(b"tables", pickle.dumps(tables))
+        catalogDB.delete(table_name.encode())
+        print(MY_PROMPT + "'" + table_name + "' table is dropped")
 
     def desc_query(self, items):
-        print(MY_PROMPT + "'DESC' requested")
+        table_name = items[1].children[0].value
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        # check if table exists
+        if table_name not in tables:
+            print(MY_PROMPT + "No such table")
+            return
+        target = pickle.loads(catalogDB.get(table_name.encode()))
+        # print table schema
+        print("-------------------------------------------------")
+        print("table name [" + table_name + "]")
+        print(f"{'column name':21s}{'type':11s}{'null':11s}{'key':10s}")
+        for col_name, col_info in target["columns"].items():
+            nullable = "Y" if col_info["nullable"] else "N"
+            key = "PRI" if col_info["primary_key"] else ""
+            if col_info["references"] is not None:
+                key += "/FOR" if key != "" else "FOR"
+            print(f"{col_name:20s} {col_info['type']:10s} {nullable:10s} {key:10s}")
+        print("-------------------------------------------------")
 
     def show_tables_query(self, items):
-        print(MY_PROMPT + "'SHOW TABLES' requested")
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        print("----------------")
+        for table in tables:
+            print(table)
+        print("----------------")
 
     def select_query(self, items):
         print(MY_PROMPT + "'SELECT' requested")
