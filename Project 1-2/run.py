@@ -161,6 +161,18 @@ class T(Transformer):
         if len(target["referenced_by"]) != 0:
             print(MY_PROMPT + "Drop table has failed: '" + table_name +"' is referenced by other table")
             return
+        target = pickle.loads(catalogDB.get(table_name.encode()))
+        referencing_tables = []
+        # check if table is referencing other tables
+        for column in target["columns"]:
+            if target["columns"][column]["references"] is not None:
+                ref_table_name, ref_col_name = target["columns"][column]["references"].split(".")
+                if ref_table_name not in referencing_tables:
+                    referencing_tables.append(ref_table_name)
+        for ref_table_name in referencing_tables:
+            ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
+            ref_table_info["referenced_by"].remove(table_name)
+            catalogDB.put(ref_table_name.encode(), pickle.dumps(ref_table_info))
         # update catalogDB
         tables.remove(table_name)
         catalogDB.put(b"tables", pickle.dumps(tables))
