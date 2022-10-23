@@ -38,7 +38,7 @@ class TreeParser():
         pk_list = self.parse_primary_key_constraint(pk_constraint[0])
         for pk in pk_list:
             if pk not in table_dict["columns"]:
-                raise Exception("NonExistingColumnDefError("+pk+")")
+                raise Exception("NonExistingColumnDefError("+pk+")", pk)
             table_dict["columns"][pk]["nullable"] = False
             table_dict["columns"][pk]["primary_key"] = True
         # parse foreign key constraint
@@ -46,7 +46,7 @@ class TreeParser():
             refer_info = self.parse_referential_constraint(ref_con)
             for col_name, ref_name in zip(refer_info["col_names"], refer_info["ref_names"]):
                 if col_name not in table_dict["columns"]:
-                    raise Exception("NonExistingColumnDefError("+col_name+")")
+                    raise Exception("NonExistingColumnDefError("+col_name+")", col_name)
                 table_dict["columns"][col_name]["references"] = refer_info["ref_table_name"]+"."+ref_name
 
         table_dict["referenced_by"] = []
@@ -54,11 +54,11 @@ class TreeParser():
         return table_dict
 
     def parse_column_definition(self, root):
-        col_name = root.children[0].children[0].value
+        col_name = root.children[0].children[0].value.lower()
         for token in root.children[1].children:
             if token.type == "INT" and int(token.value) < 1:
                 raise Exception("CharLengthError")
-        col_type = "".join(x.value for x in root.children[1].children)
+        col_type = "".join(x.value.lower() for x in root.children[1].children)
         col_nullable = (root.children[2] is None)
         
         return col_name, col_type, col_nullable
@@ -77,7 +77,7 @@ class TreeParser():
         pk_list = []
         column_list = root.find_data("column_name")
         for column in column_list:
-            column_name = column.children[0].value
+            column_name = column.children[0].value.lower()
             if column_name in pk_list:
                 raise Exception("DuplicatePrimaryKeyDefError")
             else:
@@ -87,12 +87,12 @@ class TreeParser():
 
     def parse_referential_constraint(self, root):
         col_name_list = root.children[2].find_data("column_name")
-        col_names = [x.children[0].value for x in col_name_list]
+        col_names = [x.children[0].value.lower() for x in col_name_list]
 
-        ref_table_name = root.children[4].children[0].value
+        ref_table_name = root.children[4].children[0].value.lower()
 
         ref_name_list = root.children[5].find_data("column_name")
-        ref_names = [x.children[0].value for x in ref_name_list]
+        ref_names = [x.children[0].value.lower() for x in ref_name_list]
 
         refer_info = {
             "col_names": col_names,
@@ -107,7 +107,7 @@ class T(Transformer):
     # items[2] == Tree "table_name"
     # items[3] == Tree "table_element_list"
     def create_table_query(self, items):
-        table_name = items[2].children[0].value
+        table_name = items[2].children[0].value.lower()
         tables = pickle.loads(catalogDB.get(b"tables"))
         # check if table already exists
         if table_name in tables:
@@ -215,15 +215,11 @@ class T(Transformer):
 # 3. 한 줄에 여러 쿼리가 ;(세미콜론)으로 구분되어 들어오면, 처음부터 순차적으로 처리한다.
 # 4. 쿼리에 오류가 없는 경우 (해당 쿼리) requestd를 출력하고, 에러가 발생한 경우 Syntax error를 출력한다.
 def main():
-    '''
     if os.path.exists("./DB/catalog.db"):
         catalogDB.open("./DB/catalog.db", dbtype=db.DB_HASH)
     else:
         catalogDB.open("./DB/catalog.db", dbtype=db.DB_HASH, flags=db.DB_CREATE)
         catalogDB.put(b"tables", pickle.dumps(list()))
-    '''
-    catalogDB.open("./DB/catalog.db", dbtype=db.DB_HASH, flags=db.DB_CREATE)
-    catalogDB.put(b"tables", pickle.dumps(list()))
 
     with open("grammar.lark") as file:
         sql_parser = Lark(file.read(), start="command", parser="lalr", transformer=T())
@@ -239,6 +235,25 @@ def main():
                 sql_parser.parse(query)
             except exceptions.UnexpectedToken or exceptions.UnexpectedCharacters or exceptions.UnexpectedInput:
                 print(MY_PROMPT + "Syntax error")
+                break
+            except Exception as e:
+                err = e.args[0]
+                if err == "DuplicateColumnDefError":
+                    print(MY_PROMPT + "Create table has failed: column definition is duplicated")
+                elif err == "DuplicatePrimaryKeyDefError":
+                    print(MY_PROMPT + "Create table has failed: primary key definition is duplicated")
+                elif err == "ReferenceTypeError":
+                    print(MY_PROMPT + "Create table has failed: foreign key references wrong type")
+                elif err == "ReferenceNonPrimaryKeyError":
+                    print(MY_PROMPT + "Create table has failed: foreign key references non primary key column")
+                elif err == "ReferenceColumnExistenceError":
+                    print(MY_PROMPT + "Create table has failed: foreign key references non existing column")
+                elif err == "ReferenceTableExistenceError":
+                    print(MY_PROMPT + "Create table has failed: foreign key references non existing table")
+                elif err.startswith("NonExistingColumnDefError"):
+                    print(MY_PROMPT + "Create table has failed: '" + e.args[1] + "' does not exist in column definition")
+                elif err == "TableExistenceError":
+                    print(MY_PROMPT + "Create table has failed: table with the same name already exists")
                 break
             except SystemExit:
                 catalogDB.close()
