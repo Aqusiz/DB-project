@@ -120,6 +120,8 @@ class T(Transformer):
         for col_name, col_info in table_dict["columns"].items():
             if col_info["references"] is not None:
                 ref_table_name, ref_col_name = col_info["references"].split(".")
+                if ref_table_name == table_name:
+                    raise Exception("SelfReferentialError")
                 if ref_table_name not in tables:
                     raise Exception("ReferenceTableExistenceError")
                 if ref_table_name not in referenced_table_dict:
@@ -136,7 +138,7 @@ class T(Transformer):
         # update catalogDB
         for ref_name, ref_table_info in referenced_table_dict.items():
             if ref_table_info["referenced_number"] != len(ref_table_info["pk_list"]):
-                raise Exception("ReferenceNonPrimaryKeyError")
+                raise Exception("ReferenceTypeError")
             del(ref_table_info["referenced_number"])
             ref_table_info["referenced_by"].append(table_name)
             catalogDB.put(ref_name.encode(), pickle.dumps(ref_table_info))
