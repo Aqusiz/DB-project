@@ -124,12 +124,12 @@ class T(Transformer):
                     raise Exception("ReferenceTableExistenceError")
                 if ref_table_name not in referenced_table_dict:
                     referenced_table_dict[ref_table_name] = pickle.loads(catalogDB.get(ref_table_name.encode()))
-                    referenced_table_dict[ref_table_name]["referenced_number"] = 0
+                    referenced_table_dict[ref_table_name]["referenced_number"] = 1
                 else:
                     referenced_table_dict[ref_table_name]["referenced_number"] += 1
                 if ref_col_name not in referenced_table_dict[ref_table_name]["columns"]:
                     raise Exception("ReferenceColumnExistenceError")
-                if not referenced_table_dict[ref_table_name]["columns"][ref_col_name]["primary_key"]:
+                if ref_col_name not in referenced_table_dict[ref_table_name]["pk_list"]:
                     raise Exception("ReferenceNonPrimaryKeyError")
                 if col_info["type"] != referenced_table_dict[ref_table_name]["columns"][ref_col_name]["type"]:
                     raise Exception("ReferenceTypeError")
@@ -254,6 +254,8 @@ def main():
                     print(MY_PROMPT + "Create table has failed: '" + e.args[1] + "' does not exist in column definition")
                 elif err == "TableExistenceError":
                     print(MY_PROMPT + "Create table has failed: table with the same name already exists")
+                else:
+                    print(e)
                 break
             except SystemExit:
                 catalogDB.close()
