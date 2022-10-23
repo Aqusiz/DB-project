@@ -47,6 +47,8 @@ class TreeParser():
             for col_name, ref_name in zip(refer_info["col_names"], refer_info["ref_names"]):
                 if col_name not in table_dict["columns"]:
                     raise Exception("NonExistingColumnDefError("+col_name+")", col_name)
+                if table_dict["columns"][col_name]["references"] is not None:
+                    raise Exception("DuplicateForeignKeyDefError("+col_name+")", col_name)
                 table_dict["columns"][col_name]["references"] = refer_info["ref_table_name"]+"."+ref_name
 
         table_dict["referenced_by"] = []
@@ -120,9 +122,7 @@ class T(Transformer):
         for col_name, col_info in table_dict["columns"].items():
             if col_info["references"] is not None:
                 ref_table_name, ref_col_name = col_info["references"].split(".")
-                if ref_table_name == table_name:
-                    raise Exception("SelfReferentialError")
-                if ref_table_name not in tables:
+                if ref_table_name not in tables or ref_table_name == table_name:
                     raise Exception("ReferenceTableExistenceError")
                 if ref_table_name not in referenced_table_dict:
                     referenced_table_dict[ref_table_name] = pickle.loads(catalogDB.get(ref_table_name.encode()))
