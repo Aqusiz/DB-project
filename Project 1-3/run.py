@@ -308,6 +308,10 @@ class T(Transformer):
                 value = value[1:-1]
                 max_len = int(col_info["type"][5:-1])
                 value = value[:max_len]
+            elif token_type == "date":
+                if col_info["type"] != "date":
+                    print(MY_PROMPT + "Insertion has failed: Types are not matched")
+                    return
 
             val_list.append(value)
 
