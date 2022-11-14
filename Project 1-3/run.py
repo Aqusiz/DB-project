@@ -8,7 +8,6 @@ import os
 
 MY_PROMPT = "DB_2017-16140> "
 catalogDB = db.DB()
-targetDB = db.DB()
 
 class TreeParser():
     def parse(self, root):
@@ -145,7 +144,10 @@ class T(Transformer):
 
         catalogDB.put(b"tables", pickle.dumps(tables))
         catalogDB.put(table_name.encode(), pickle.dumps(table_dict))
+        targetDB = db.DB()
+        targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH, flags=db.DB_CREATE)
 
+        targetDB.close()
         print(MY_PROMPT + "'"+table_name+"'" + " table is created")
         
     # items[0] == Token "DROP"
@@ -211,8 +213,120 @@ class T(Transformer):
     def select_query(self, items):
         print(MY_PROMPT + "'SELECT' requested")
 
+    # items[0] == Token "INSERT"
+    # items[1] == Token "INTO"
+    # items[2] == Tree "table_name"
+    # items[3] == Tree "column_name_list"
+    # items[4] == Token "VALUES"
+    # items[5] == Tree "values"
     def insert_query(self, items):
-        print(MY_PROMPT + "'INSERT' requested")
+        table_name = items[2].children[0].value
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        # check if table exists
+        print("check if table exists")
+        if table_name not in tables:
+            print(MY_PROMPT + "No such table")
+            return
+        print("table exists")
+        table_info = pickle.loads(catalogDB.get(table_name.encode()))
+        columns = table_info["columns"]
+        targetDB = db.DB()
+        targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
+
+        query_col_list = None
+        if items[3] is not None:
+            query_col_list = items[3].children[1:-1]
+        value_tree_list = items[5].children[1:-1]
+        print(value_tree_list)
+        # check if column list is valid
+        print("check if column list is valid")
+        if query_col_list is not None:
+            if len(query_col_list) != len(columns):
+                print(MY_PROMPT + "Insertion has failed: Types are not matched")
+                return
+            for colTree in query_col_list:
+                col_name = colTree.children[0].value.lower()
+                if col_name not in columns:
+                    print(MY_PROMPT + "Insertion has failed: '" + col_name + "' does not exist")
+                    return
+
+        PK_col_list = []
+        FK_col_list = []
+        PK_val_list = []
+        FK_val_list = []
+        val_list = []
+        for col_name, col_info in columns.items():
+            if col_info["primary_key"]:
+                PK_col_list.append(col_name)
+                PK_val_list.append(None)
+            if col_info["references"] is not None:
+                FK_col_list.append(col_name)
+                FK_val_list.append(None)
+            
+        # check if value list is valid
+        print("check if value list is valid")
+        if len(value_tree_list) != len(columns):
+            print(MY_PROMPT + "Insertion has failed: Types are not matched")
+            return
+        for i in range(len(value_tree_list)):
+            # parse token_type, value, and col_info
+            print("parse token_type, value, and col_info")
+            valueTree = value_tree_list[i].children[0]
+            if isinstance(valueTree, str) and valueTree.lower() == "null":
+                token_type = "NULL"
+                value = "null"
+            else:
+                token_type = valueTree.children[0].type.lower()
+                value = valueTree.children[0].value.lower()
+            print(token_type)
+            print(value)
+            if query_col_list is not None:
+                col_name = query_col_list[i].children[0].value.lower()
+            else:
+                col_name = list(columns.keys())[i]
+            col_info = columns[col_name]
+
+            # check if value is null but column is not nullable
+            if value == "null" and not col_info["nullable"]:
+                print(MY_PROMPT + "Insertion has failed: '" + col_name + "' is not nullable")
+                return
+            
+            # check column type is valid
+            if token_type == "int":
+                if col_info["type"] != "int":
+                    print(MY_PROMPT + "Insertion has failed: Types are not matched")
+                    return
+                try:
+                    int_value = int(value)
+                except ValueError:
+                    print(MY_PROMPT + "Insertion has failed: Types are not matched")
+                    return
+            elif token_type == "str":
+                if not col_info["type"].startswith("char"):
+                    print(MY_PROMPT + "Insertion has failed: Types are not matched")
+                    return
+                value = value[1:-1]
+                max_len = int(col_info["type"][5:-1])
+                value = value[:max_len]
+
+            val_list.append(value)
+
+            if col_info["primary_key"]:
+                PK_val_list[PK_col_list.index(col_name)] = value
+
+            #if col_info["references"] is not None:
+            #    FK_val_list[FK_col_list.index(col_name)] = value
+
+        # check if primary key is duplicated
+        key_tuple = "*".join(PK_val_list).encode()
+        if targetDB.exists(key_tuple):
+            print(MY_PROMPT + "Insertion has failed: Primary key duplication")
+            return
+
+        val_tuple = "*".join(val_list).encode()
+        targetDB.put(key_tuple, val_tuple)
+
+        print(MY_PROMPT + "The row is inserted")
 
     def delete_query(self, items):
         print(MY_PROMPT + "'DELETE' requested")
