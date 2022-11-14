@@ -251,17 +251,15 @@ class T(Transformer):
                     return
 
         PK_col_list = []
-        FK_col_list = []
         PK_val_list = []
-        FK_val_list = []
+        FK_info = {}
         val_list = []
         for col_name, col_info in columns.items():
             if col_info["primary_key"]:
                 PK_col_list.append(col_name)
                 PK_val_list.append(None)
             if col_info["references"] is not None:
-                FK_col_list.append(col_name)
-                FK_val_list.append(None)
+                FK_info[col_name] = col_info["references"]
             
         # check if value list is valid
         print("check if value list is valid")
@@ -318,14 +316,28 @@ class T(Transformer):
             if col_info["primary_key"]:
                 PK_val_list[PK_col_list.index(col_name)] = value
 
-            #if col_info["references"] is not None:
-            #    FK_val_list[FK_col_list.index(col_name)] = value
-
         # check if primary key is duplicated
         key_tuple = "*".join(PK_val_list).encode()
         if targetDB.exists(key_tuple):
             print(MY_PROMPT + "Insertion has failed: Primary key duplication")
             return
+        
+        # check if foreign key is valid
+        FKV_list_by_table = {}
+        for col_name, ref_info in FK_info.items():
+            ref_table_name, ref_col_name = ref_info.split(".")
+            if ref_table_name not in FKV_list_by_table:
+                FKV_list_by_table[ref_table_name] = [val_list[list(columns.keys()).index(col_name)]]
+            else:
+                FKV_list_by_table[ref_table_name].append(val_list[list(columns.keys()).index(col_name)])
+
+        for ref_table_name, FKV_list in FKV_list_by_table.items():
+            refDB = db.DB()
+            refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
+            key_tuple = "*".join(FKV_list).encode()
+            if not refDB.exists(key_tuple):
+                print(MY_PROMPT + "Insertion has failed: Referential integrity violation")
+                return
 
         val_tuple = "*".join(val_list).encode()
         targetDB.put(key_tuple, val_tuple)
