@@ -182,6 +182,7 @@ class T(Transformer):
         tables.remove(table_name)
         catalogDB.put(b"tables", pickle.dumps(tables))
         catalogDB.delete(table_name.encode())
+        os.remove('./DB/' + table_name + '.db')
         print(MY_PROMPT + "'" + table_name + "' table is dropped")
 
     def desc_query(self, items):
