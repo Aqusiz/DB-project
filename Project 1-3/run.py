@@ -522,9 +522,70 @@ class T(Transformer):
 
         targetDB.close()
         print(MY_PROMPT + str(deleted_number) + " row(s) are deleted")
-
+    # items[0] = TOKEN UPDATE
+    # items[1] = TREE table_name
+    # items[2] = Token SET
+    # items[3] = TREE column_name
+    # items[4] = TOKEN COMP_OP
+    # items[5] = TREE comparable_value
+    # items[6] = TREE where_clause
     def update_query(self, items):
-        print(MY_PROMPT + "'UPDATE' requested")
+        table_name = items[1].children[0].value.lower()
+        column_name = items[3].children[0].value.lower()
+        value = items[5].children[0].value.lower()
+        value_type = operand_type(value)
+
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        if table_name not in tables:
+            print(MY_PROMPT + "No such table")
+            return
+        
+        table_info = pickle.loads(catalogDB.get(table_name.encode()))
+        table_columns = list(table_info["columns"].keys())
+        column_info = table_info["columns"][column_name]
+        if column_name not in table_columns:
+            print(MY_PROMPT + "Update has failed: '" + column_name + "' does not exist")
+            return
+        if column_info["type"] == "int":
+            try:
+                int_value = int(value)
+            except ValueError:
+                print(MY_PROMPT + "Update has failed: Types are not matched")
+                return
+        elif column_info["type"] == "date":
+            if value_type != "date":
+                print(MY_PROMPT + "Update has failed: Types are not matched")
+                return
+        else:
+            if value_type != "str":
+                print(MY_PROMPT + "Update has failed: Types are not matched")
+                return
+            value = value[1:-1]
+            max_len = int(column_info["type"][5:-1])
+            value = value[:max_len]
+        
+        targetDB = db.DB()
+        targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
+        updated_num = 0
+        col_idx = table_columns.index(column_name)
+        for key, val in targetDB.items():
+            val_list = val.decode().split("*")
+            if items[6] is not None:
+                cols = []
+                for col in table_columns:
+                    cols.append([table_name, None, col, None])
+                test = test_bool_expr(cols, val_list, items[6].children[1])
+                if test is True:
+                    val_list[col_idx] = value
+                    targetDB.put(key, "*".join(val_list).encode())
+                    updated_num += 1
+            else:
+                val_list[col_idx] = value
+                targetDB.put(key, "*".join(val_list).encode())
+                updated_num += 1
+        targetDB.close()
+
+        print(MY_PROMPT + str(updated_num) + " row(s) are updated")
 
     def EXIT(self, items):
         raise SystemExit
