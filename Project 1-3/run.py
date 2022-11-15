@@ -502,7 +502,7 @@ class T(Transformer):
             value_list = value.decode().split("*")
             rows.append((key.decode(), value_list))
         
-        # check if where clause is valid
+        # check where clause for each row
         if items[3] is not None:
             cols = []
             for col in table_columns:
@@ -515,11 +515,55 @@ class T(Transformer):
         else:
             for row in rows:
                 will_be_deleted_keys.append(row[0])
+
+        # check if foreign key is valid
+        size = len(will_be_deleted_keys)
+        for i in range(size):
+            PK_values = will_be_deleted_keys[i].strip("'").split("*")
+            print(PK_values)
+
+            ref_tables = table_info["referenced_by"]
+            print("ref_tables: " + str(ref_tables))
+            for ref_table_name in ref_tables:
+                can_set_null = True
+                ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
+                ref_table_columns = ref_table_info["columns"]
+                for col_name, column_info in ref_table_columns.items():
+                    if column_info["references"] is None:
+                        continue
+                    if column_info["references"].startswith(table_name) and column_info["nullable"] == False:
+                        can_set_null = False
+                        break
+                
+                if not can_set_null:
+                    will_be_deleted_keys[i] = None
+
         # delete rows
         deleted_number = 0
+        print("start delete rows")
         for key in will_be_deleted_keys:
-            targetDB.delete(key.encode())
-            deleted_number += 1
+            if key is not None:
+                targetDB.delete(key.encode())
+                pk_list = key.strip("'").split("*")
+                print("pk_list: " + str(pk_list))
+                for ref_table_name in ref_tables:
+                    refDB = db.DB()
+                    refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
+                    for ref_key, ref_value in refDB.items():
+                        to_be_null = True
+                        value_list = ref_value.decode().split("*")
+                        print(value_list)
+                        for i in range(len(pk_list)):
+                            if pk_list[i] not in value_list:
+                                to_be_null = False
+                                break
+                        if to_be_null:
+                            for i in range(len(pk_list)):
+                                value_list[value_list.index(pk_list[i])] = "null"
+                            refDB.put(ref_key, "*".join(value_list).encode())
+                    refDB.close()
+
+                deleted_number += 1
 
         targetDB.close()
         print(MY_PROMPT + str(deleted_number) + " row(s) are deleted")
