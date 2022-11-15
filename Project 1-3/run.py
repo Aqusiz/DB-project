@@ -211,8 +211,149 @@ class T(Transformer):
             print(table)
         print("----------------")
 
+    # items[0] == Token "SELECT"
+    # items[1] == Tree "select_list"
+    # items[2] == Tree "table_expression"
     def select_query(self, items):
-        print(MY_PROMPT + "'SELECT' requested")
+        db_table_list = pickle.loads(catalogDB.get(b"tables"))
+        
+        # parse from clause
+        table_name_list = []
+        table_alias_list = []
+
+        from_clause = items[2].children[0]
+        table_reference_list = from_clause.children[1].children
+        for reffered_table in table_reference_list:
+            table_name = reffered_table.children[0].children[0].value
+            if table_name not in db_table_list:
+                print(MY_PROMPT + "No such table")
+                return
+            table_name_list.append(table_name)
+            print("table_name: " + table_name)
+            # check table alias
+            if reffered_table.children[2] is not None:
+                table_alias_list.append(reffered_table.children[2].children[0].value)
+            else:
+                table_alias_list.append(None)
+
+
+        # parse select clause / not * case
+        column_name_list = []
+        column_alias_list = []
+        column_table_name_list = []
+        column_table_alias_list = []
+
+        select_list = items[1]
+        if len(select_list.children) > 0:
+            for selected_column in select_list.children:
+                table_name = table_name_list[0]
+                table_alias = None
+                col_name = selected_column.children[1].children[0].value
+                col_alias = None
+                # parse table name
+                if selected_column.children[0] is not None:
+                    name = selected_column.children[0].children[0].value
+                    if name in table_alias_list:
+                        table_alias = name
+                        table_name = table_name_list[table_alias_list.index(table_alias)]
+                    elif name in table_name_list:
+                        table_name = name
+                    else:
+                        print(MY_PROMPT + "No such table")
+                        return
+                # parse column alias
+                if selected_column.children[3] is not None:
+                    col_alias = selected_column.children[3].children[0].value
+                column_name_list.append(col_name)
+                column_alias_list.append(col_alias)
+                column_table_name_list.append(table_name)
+                column_table_alias_list.append(table_alias)
+                print("column_name: " + col_name)
+                print("column_alias: " + str(col_alias))
+                print("column_table_name: " + str(table_name))
+                print("column_table_alias: " + str(table_alias))
+
+
+        # join tables
+        joined_rows = [[]]
+        joined_cols = []
+        for table in table_name_list:
+            print(table)
+            # make joined column list
+            print("make joined column list")
+            column_list = pickle.loads(catalogDB.get(table.encode()))["columns"].keys()
+            column_list = list(column_list)
+            for column in column_list:
+                if column in column_alias_list: 
+                    col_alias = column_alias_list[column_name_list.index(column)]
+                else:
+                    col_alias =  None
+                joined_cols.append([table, table_alias_list[table_name_list.index(table)], column, col_alias])
+            
+            # make joined rows
+            print("make joined rows")
+            targetDB = db.DB()
+            targetDB.open('./DB/' + table + '.db')
+            old_size = len(joined_rows)
+            for i in range(old_size):
+                old_row = joined_rows.pop(0)
+                for row in targetDB.values():
+                    new_row = old_row + row.decode().split("*")
+                    joined_rows.append(new_row)
+            targetDB.close()
+        
+
+        # select all columns when select *
+        print("select all columns when select *")
+        if len(select_list.children) == 0:
+            for col in joined_cols:
+                print("col: " + str(col))
+                column_name_list.append(col[2])
+                column_alias_list.append(col[3])
+                column_table_name_list.append(col[0])
+                column_table_alias_list.append(col[1])
+
+
+        # check where clause for each row
+        print("check where clause for each row")
+        if items[2].children[1] is not None:
+            where_clause = items[2].children[1]
+            bool_expr = where_clause.children[1]
+            size = len(joined_rows)
+            for i in range(size):
+                row = joined_rows.pop(0)
+                test = test_bool_expr(joined_cols, row, bool_expr)
+                if test == True:
+                    joined_rows.append(row)
+        
+        # project rows by selected columns
+        size = len(joined_rows)
+        for i in range(size):
+            row = joined_rows.pop(0)
+            new_row = []
+            size2 = len(joined_cols)
+            for j in range(size2):
+                size3 = len(column_name_list)
+                for k in range(size3):
+                    if column_name_list[k] == joined_cols[j][2] and column_table_name_list[k] == joined_cols[j][0]:
+                        new_row.append(row[j])
+            joined_rows.append(new_row)
+
+        # print result
+        width = []
+        for col in column_name_list:
+            w = len(col)
+            for row in joined_rows:
+                w = max(w, len(row[column_name_list.index(col)]))
+            width.append(w)
+        print("+" + "+".join(["-" * (w + 2) for w in width]) + "+")
+
+        print("|" + "|".join([col.center(w + 2) for col, w in zip(column_name_list, width)]) + "|")
+        print("+" + "+".join(["-" * (w + 2) for w in width]) + "+")
+
+        for row in joined_rows:
+            print("|" + "|".join([col.center(w + 2) for col, w in zip(row, width)]) + "|")
+        print("+" + "+".join(["-" * (w + 2) for w in width]) + "+")
 
     # items[0] == Token "INSERT"
     # items[1] == Token "INTO"
@@ -362,8 +503,12 @@ class T(Transformer):
         
         # check if where clause is valid
         if items[3] is not None:
+            cols = []
+            for col in table_columns:
+                cols.append([table_name, None, col, None])
+
             for row in rows:
-                test = test_bool_expr(table_columns, row[1], items[3].children[1])
+                test = test_bool_expr(cols, row[1], items[3].children[1])
                 if test is True:
                     will_be_deleted_keys.append(row[0])
         else:
@@ -418,31 +563,36 @@ def test_predicate(cols, vals, pred_tree):
         return test_null_predicate(cols, vals, node)
 
 def parse_operand(cols, vals, operand_tree):
+    # constant value
     if operand_tree.children[0] is not None and operand_tree.children[0].data == "comparable_value":
         if operand_tree.children[0].children[0].value.startswith("'"):
             return operand_tree.children[0].children[0].value[1:-1]
         return str(operand_tree.children[0].children[0].value)
+
     else:
+        # no table name
         if operand_tree.children[0] is None:
             col_name = operand_tree.children[1].children[0].value.lower()
-            if col_name not in cols:
+            if col_name not in [column[2] for column in cols]:
                 raise Exception("WhereColumnNotExist")
-            return vals[cols.index(col_name)]
+            for i in range(len(cols)):
+                if cols[i][2] == col_name:
+                    return vals[i]
+
+        # with table name
         else:
             table_name = operand_tree.children[0].children[0].value.lower()
             col_name = operand_tree.children[1].children[0].value.lower()
-            joinedCol = table_name + "." + col_name
-            if joinedCol not in cols:
-                if col_name not in cols:
-                    raise Exception("WhereColumnNotExist")
-                for col in cols:
-                    if col.startswith(table_name + "."):
-                        continue
-                    else:
-                        raise Exception("WhereTableNotSpecified")
-                return vals[cols.index(col_name)]
+            for i in range(len(cols)):
+                if cols[i][0] == table_name and cols[i][2] == col_name:
+                    return vals[i]
+                elif cols[i][1] == table_name and cols[i][2] == col_name:
+                    return vals[i]
+
+            if col_name in [column[2] for column in cols]:
+                raise Exception("WhereTableNotSpecified")
             else:
-                return vals[cols.index(joinedCol)]
+                raise Exception("WhereColumnNotExist")
 
 def operand_type(operand):
     # check if operand is int
