@@ -230,7 +230,6 @@ class T(Transformer):
                 print(MY_PROMPT + "No such table")
                 return
             table_name_list.append(table_name)
-            print("table_name: " + table_name)
             # check table alias
             if reffered_table.children[2] is not None:
                 table_alias_list.append(reffered_table.children[2].children[0].value)
@@ -269,19 +268,13 @@ class T(Transformer):
                 column_alias_list.append(col_alias)
                 column_table_name_list.append(table_name)
                 column_table_alias_list.append(table_alias)
-                print("column_name: " + col_name)
-                print("column_alias: " + str(col_alias))
-                print("column_table_name: " + str(table_name))
-                print("column_table_alias: " + str(table_alias))
 
 
         # join tables
         joined_rows = [[]]
         joined_cols = []
         for table in table_name_list:
-            print(table)
             # make joined column list
-            print("make joined column list")
             column_list = pickle.loads(catalogDB.get(table.encode()))["columns"].keys()
             column_list = list(column_list)
             for column in column_list:
@@ -292,7 +285,6 @@ class T(Transformer):
                 joined_cols.append([table, table_alias_list[table_name_list.index(table)], column, col_alias])
             
             # make joined rows
-            print("make joined rows")
             targetDB = db.DB()
             targetDB.open('./DB/' + table + '.db')
             old_size = len(joined_rows)
@@ -305,10 +297,8 @@ class T(Transformer):
         
 
         # select all columns when select *
-        print("select all columns when select *")
         if len(select_list.children) == 0:
             for col in joined_cols:
-                print("col: " + str(col))
                 column_name_list.append(col[2])
                 column_alias_list.append(col[3])
                 column_table_name_list.append(col[0])
@@ -316,7 +306,6 @@ class T(Transformer):
 
 
         # check where clause for each row
-        print("check where clause for each row")
         if items[2].children[1] is not None:
             where_clause = items[2].children[1]
             bool_expr = where_clause.children[1]
@@ -520,10 +509,8 @@ class T(Transformer):
         size = len(will_be_deleted_keys)
         for i in range(size):
             PK_values = will_be_deleted_keys[i].strip("'").split("*")
-            print(PK_values)
 
             ref_tables = table_info["referenced_by"]
-            print("ref_tables: " + str(ref_tables))
             for ref_table_name in ref_tables:
                 can_set_null = True
                 ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
@@ -540,19 +527,16 @@ class T(Transformer):
 
         # delete rows
         deleted_number = 0
-        print("start delete rows")
         for key in will_be_deleted_keys:
             if key is not None:
                 targetDB.delete(key.encode())
                 pk_list = key.strip("'").split("*")
-                print("pk_list: " + str(pk_list))
                 for ref_table_name in ref_tables:
                     refDB = db.DB()
                     refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
                     for ref_key, ref_value in refDB.items():
                         to_be_null = True
                         value_list = ref_value.decode().split("*")
-                        print(value_list)
                         for i in range(len(pk_list)):
                             if pk_list[i] not in value_list:
                                 to_be_null = False
@@ -719,7 +703,6 @@ def test_comparison_predicate(cols, vals, comp_tree):
         raise Exception("WhereIncomparableError")
     
     operator = comp_tree.children[1].value
-    print(operand_type(operand1) + ":" + operand1 + " " + operator + " " + operand_type(operand2)+ ":" + operand2)
     if operator == "=":
         return operand1 == operand2
     elif operator == ">":
