@@ -223,11 +223,9 @@ class T(Transformer):
         table_name = items[2].children[0].value
         tables = pickle.loads(catalogDB.get(b"tables"))
         # check if table exists
-        print("check if table exists")
         if table_name not in tables:
             print(MY_PROMPT + "No such table")
             return
-        print("table exists")
         table_info = pickle.loads(catalogDB.get(table_name.encode()))
         columns = table_info["columns"]
         targetDB = db.DB()
@@ -237,9 +235,7 @@ class T(Transformer):
         if items[3] is not None:
             query_col_list = items[3].children[1:-1]
         value_tree_list = items[5].children[1:-1]
-        print(value_tree_list)
         # check if column list is valid
-        print("check if column list is valid")
         if query_col_list is not None:
             if len(query_col_list) != len(columns):
                 print(MY_PROMPT + "Insertion has failed: Types are not matched")
@@ -262,13 +258,11 @@ class T(Transformer):
                 FK_info[col_name] = col_info["references"]
             
         # check if value list is valid
-        print("check if value list is valid")
         if len(value_tree_list) != len(columns):
             print(MY_PROMPT + "Insertion has failed: Types are not matched")
             return
         for i in range(len(value_tree_list)):
             # parse token_type, value, and col_info
-            print("parse token_type, value, and col_info")
             valueTree = value_tree_list[i].children[0]
             if isinstance(valueTree, str) and valueTree.lower() == "null":
                 token_type = "NULL"
@@ -276,8 +270,6 @@ class T(Transformer):
             else:
                 token_type = valueTree.children[0].type.lower()
                 value = valueTree.children[0].value.lower()
-            print(token_type)
-            print(value)
             if query_col_list is not None:
                 col_name = query_col_list[i].children[0].value.lower()
             else:
@@ -339,11 +331,17 @@ class T(Transformer):
                 print(MY_PROMPT + "Insertion has failed: Referential integrity violation")
                 return
 
+        # Add row to table
         val_tuple = "*".join(val_list).encode()
         targetDB.put(key_tuple, val_tuple)
 
         print(MY_PROMPT + "The row is inserted")
+        targetDB.close()
 
+    # items[0] = TOKEN DELETE
+    # items[1] = TOKEN FROM
+    # items[2] = TREE table_name
+    # items[3] = TREE where_clause
     def delete_query(self, items):
         print(MY_PROMPT + "'DELETE' requested")
 
