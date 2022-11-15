@@ -5,6 +5,7 @@ from lark import Lark, Transformer, exceptions
 from berkeleydb import db
 import pickle
 import os
+import datetime
 
 MY_PROMPT = "DB_2017-16140> "
 catalogDB = db.DB()
@@ -343,7 +344,39 @@ class T(Transformer):
     # items[2] = TREE table_name
     # items[3] = TREE where_clause
     def delete_query(self, items):
-        print(MY_PROMPT + "'DELETE' requested")
+        table_name = items[2].children[0].value.lower()
+        tables = pickle.loads(catalogDB.get(b"tables"))
+        if table_name not in tables:
+            print(MY_PROMPT + "No such table")
+            return
+        
+        table_info = pickle.loads(catalogDB.get(table_name.encode()))
+        table_columns = list(table_info["columns"].keys())
+        targetDB = db.DB()
+        targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
+        rows = []
+        will_be_deleted_keys = []
+        for key, value in targetDB.items():
+            value_list = value.decode().split("*")
+            rows.append((key.decode(), value_list))
+        
+        # check if where clause is valid
+        if items[3] is not None:
+            for row in rows:
+                test = test_bool_expr(table_columns, row[1], items[3].children[1])
+                if test is True:
+                    will_be_deleted_keys.append(row[0])
+        else:
+            for row in rows:
+                will_be_deleted_keys.append(row[0])
+        # delete rows
+        deleted_number = 0
+        for key in will_be_deleted_keys:
+            targetDB.delete(key.encode())
+            deleted_number += 1
+
+        targetDB.close()
+        print(MY_PROMPT + str(deleted_number) + " row(s) are deleted")
 
     def update_query(self, items):
         print(MY_PROMPT + "'UPDATE' requested")
@@ -351,6 +384,102 @@ class T(Transformer):
     def EXIT(self, items):
         raise SystemExit
 
+
+# Helper functions for parsing where clause
+def test_bool_expr(cols, vals, expr_tree):
+    answer = False
+    for i in range(0, len(expr_tree.children), 2):
+        answer = answer or test_bool_term(cols, vals, expr_tree.children[i])
+    return answer
+
+def test_bool_term(cols, vals, term_tree):
+    answer = True
+    for i in range(0, len(term_tree.children), 2):
+        answer = answer and test_bool_factor(cols, vals, term_tree.children[i])
+    return answer
+
+def test_bool_factor(cols, vals, factor_tree):
+    if factor_tree.children[0] is None:
+        return test_bool_test(cols, vals, factor_tree.children[1])
+    else:
+        return not test_bool_test(cols, vals, factor_tree.children[1])
+
+def test_bool_test(cols, vals, test_tree):
+    if len(test_tree.children) == 1:
+        return test_predicate(cols, vals, test_tree.children[0])
+    else:
+        return test_bool_expr(cols, vals, test_tree.children[1])
+
+def test_predicate(cols, vals, pred_tree):
+    node = pred_tree.children[0]
+    if node.data == "comparison_predicate":
+        return test_comparison_predicate(cols, vals, node)
+    elif node.data == "null_predicate":
+        return test_null_predicate(cols, vals, node)
+
+def parse_operand(cols, vals, operand_tree):
+    if operand_tree.children[0] is not None and operand_tree.children[0].data == "comparable_value":
+        if operand_tree.children[0].children[0].value.startswith("'"):
+            return operand_tree.children[0].children[0].value[1:-1]
+        return str(operand_tree.children[0].children[0].value)
+    else:
+        if operand_tree.children[0] is None:
+            col_name = operand_tree.children[1].children[0].value.lower()
+            if col_name not in cols:
+                raise Exception("WhereColumnNotExist")
+            return vals[cols.index(col_name)]
+        else:
+            table_name = operand_tree.children[0].children[0].value.lower()
+            col_name = operand_tree.children[1].children[0].value.lower()
+            joinedCol = table_name + "." + col_name
+            if joinedCol not in cols:
+                if col_name not in cols:
+                    raise Exception("WhereColumnNotExist")
+                for col in cols:
+                    if col.startswith(table_name + "."):
+                        continue
+                    else:
+                        raise Exception("WhereTableNotSpecified")
+                return vals[cols.index(col_name)]
+            else:
+                return vals[cols.index(joinedCol)]
+
+def operand_type(operand):
+    # check if operand is int
+    if operand.isdigit():
+        return "int"
+    # check if operand is date
+    try:
+        datetime.datetime.strptime(operand, '%Y-%m-%d')
+        return "date"
+    except ValueError:
+        pass
+    return "str"
+
+def test_comparison_predicate(cols, vals, comp_tree):
+    operand1 = parse_operand(cols, vals, comp_tree.children[0])
+    operand2 = parse_operand(cols, vals, comp_tree.children[2])
+    if operand_type(operand1) != operand_type(operand2):
+        raise Exception("WhereIncomparableError")
+    
+    operator = comp_tree.children[1].value
+    print(operand_type(operand1) + ":" + operand1 + " " + operator + " " + operand_type(operand2)+ ":" + operand2)
+    if operator == "=":
+        return operand1 == operand2
+    elif operator == ">":
+        return operand1 > operand2
+    elif operator == ">=":
+        return operand1 >= operand2
+    elif operator == "<":
+        return operand1 < operand2
+    elif operator == "<=":
+        return operand1 <= operand2
+    elif operator == "!=":
+        return operand1 != operand2
+
+def test_null_predicate(cols, vals, null_tree):
+
+    return True
 # 쿼리 규칙
 # 1. 쿼리는 항상 ;(세미콜론)으로 끝난다.
 # 2. ;(세미콜론)이 나오기 전까지 개행문자를 받아도 쿼리를 끝내지 않는다. (대신 PROMPT는 출력되지 않음)
