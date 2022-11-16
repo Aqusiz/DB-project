@@ -622,7 +622,7 @@ class T(Transformer):
         for key, val in targetDB.items():
             key_list = key.decode().split("*")
             val_list = val.decode().split("*")
-            
+            old_pk = None
             # check where clause for each row
             will_be_updated = False
             if items[6] is not None:
@@ -640,6 +640,7 @@ class T(Transformer):
                     # check primary key constraint
                     pk_list = table_info["pk_list"]
                     pk_idx = pk_list.index(column_name)
+                    old_pk = key_list.copy()
                     new_pk = key_list.copy()
                     new_pk[pk_idx] = value
                     new_pk = "*".join(new_pk)
@@ -665,7 +666,7 @@ class T(Transformer):
                 # check tables that referenced by this table
                 # append update list
                 if will_be_updated:
-                    will_be_updated_list.append([key_list, val_list, col_idx, value])
+                    will_be_updated_list.append([key_list, val_list, col_idx, value, old_pk])
             
         # update rows
         for row in will_be_updated_list:
@@ -673,8 +674,13 @@ class T(Transformer):
             val_list = row[1]
             col_idx = row[2]
             value = row[3]
+            old_pk = row[4]
             val_list[col_idx] = value
-            targetDB.put("*".join(key_list).encode(), "*".join(val_list).encode())
+            if old_pk is None:
+                targetDB.put("*".join(key_list).encode(), "*".join(val_list).encode())
+            else:
+                targetDB.delete("*".join(old_pk).encode())
+                targetDB.put("*".join(key_list).encode(), "*".join(val_list).encode())
             updated_num += 1
         targetDB.close()
 
