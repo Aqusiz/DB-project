@@ -548,6 +548,7 @@ class T(Transformer):
                 refDB = db.DB()
                 refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
                 for key, value in refDB.items():
+                    referencing_row_exist = True
                     value_list = value.decode().split("*")
                     for idx in fk_idx_list:
                         if value_list[idx] not in PK_values:
@@ -637,6 +638,7 @@ class T(Transformer):
         not_updated_num = 0
         will_be_updated_list = []
         col_idx = table_columns.index(column_name)
+
         for key, val in targetDB.items():
             key_list = key.decode().split("*")
             val_list = val.decode().split("*")
@@ -651,41 +653,66 @@ class T(Transformer):
                 if test is True:
                     will_be_updated = True
             else:
-                will_be_updated = True
-                
-            if will_be_updated:
-                if column_info["primary_key"] == True:
-                    # check primary key constraint
-                    pk_list = table_info["pk_list"]
-                    pk_idx = pk_list.index(column_name)
-                    old_pk = key_list.copy()
-                    new_pk = key_list.copy()
-                    new_pk[pk_idx] = value
-                    new_pk = "*".join(new_pk)
-                    if targetDB.has_key(new_pk.encode()):
-                        print(MY_PROMPT + "Update has failed: Primary key duplication")
-                        return
-                    key_list = new_pk.split("*")
-                    # check tables that reference this table
-                    for ref_table_name in ref_tables:
-                        can_set_null = True
-                        ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
-                        ref_table_columns = ref_table_info["columns"]
-                        for col_name, column_info in ref_table_columns.items():
-                            if column_info["references"] is None:
-                                continue
-                            if column_info["references"].startswith(table_name) and column_info["nullable"] == False:
-                                can_set_null = False
+                will_be_updated= True
+
+            if not will_be_updated:
+                continue
+
+            if column_info["primary_key"] == True:
+                # check primary key constraint
+                pk_list = table_info["pk_list"]
+                pk_idx = pk_list.index(column_name)
+                old_pk = key_list.copy()
+                new_pk = key_list.copy()
+                new_pk[pk_idx] = value
+                new_pk = "*".join(new_pk)
+                if targetDB.has_key(new_pk.encode()):
+                    print(MY_PROMPT + "Update has failed: Primary key duplication")
+                    return
+                key_list = new_pk.split("*")
+                # check tables that reference this table
+                for ref_table_name in ref_tables:
+                    can_set_null = True
+                    referencing_row_exist = True
+                    fk_idx_list = []
+                    idx = -1
+                    ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
+                    ref_table_columns = ref_table_info["columns"]
+                    # check if can set null
+                    for col_name, column_info in ref_table_columns.items():
+                        idx += 1
+                        if column_info["references"] is None:
+                            continue
+                        if column_info["references"].startswith(table_name) and column_info["nullable"] == False:
+                            can_set_null = False
+                            fk_idx_list.append(idx)
+                            continue
+                    # check if referencing row exists
+                    refDB = db.DB()
+                    refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
+                    for ref_key, ref_value in refDB.items():
+                        referencing_row_exist = True
+                        ref_val_list = ref_value.decode().split("*")
+                        if old_pk is not None:
+                            pk_val_list = old_pk.copy()
+                        else:
+                            pk_val_list = key_list.copy()
+                        for idx in fk_idx_list:
+                            if ref_val_list[idx] not in pk_val_list:
+                                referencing_row_exist = False
+                                refDB.close()
                                 break
-                        if not can_set_null:
-                            not_updated_num += 1
-                            will_be_updated = False
-                            break
-                # check tables that referenced by this table
-                # append update list
-                if will_be_updated:
-                    will_be_updated_list.append([key_list, val_list, col_idx, value, old_pk])
-            
+                    if not can_set_null and referencing_row_exist:
+                        not_updated_num += 1
+                        will_be_updated = False
+                        refDB.close()
+                        break
+                    refDB.close()
+
+            # append update list
+            if will_be_updated:
+                will_be_updated_list.append([key_list, val_list, col_idx, value, old_pk])
+
         # update rows
         for row in will_be_updated_list:
             key_list = row[0]
