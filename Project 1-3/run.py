@@ -589,6 +589,8 @@ class T(Transformer):
         table_info = pickle.loads(catalogDB.get(table_name.encode()))
         table_columns = list(table_info["columns"].keys())
         column_info = table_info["columns"][column_name]
+        ref_table_list = table_info["referenced_by"]
+        # check if column exists
         if column_name not in table_columns:
             print(MY_PROMPT + "Update has failed: '" + column_name + "' does not exist")
             return
@@ -615,6 +617,7 @@ class T(Transformer):
         targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
         updated_num = 0
         not_updated_num = 0
+        will_be_updated_list = []
         col_idx = table_columns.index(column_name)
         for key, val in targetDB.items():
             key_list = key.decode().split("*")
@@ -633,8 +636,8 @@ class T(Transformer):
                 will_be_updated = True
                 
             if will_be_updated:
-                # check primary key constraint
                 if column_info["primary_key"] == True:
+                    # check primary key constraint
                     pk_list = table_info["pk_list"]
                     pk_idx = pk_list.index(column_name)
                     new_pk = key_list.copy()
@@ -643,25 +646,20 @@ class T(Transformer):
                     if targetDB.has_key(new_pk.encode()):
                         print(MY_PROMPT + "Update has failed: Primary key duplication")
                         return
+                    key_list = new_pk.split("*")
                 # check foreign key constraint
-                foreign_key_test = False
-                if column_info["references"] is not None:
-                    print("check foreign key")
-                    ref_table_name = column_info["references"].split(".")[0]
-                    refDB = db.DB()
-                    refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
-                    for ref_key, ref_val in refDB.items():
-                        ref_val_list = ref_val.decode().split("*")
-                        if value in ref_val_list:
-                            foreign_key_test = True
-                            break
-                    if not foreign_key_test:
-                        not_updated_num += 1
-                        continue
-                # update
-                val_list[col_idx] = value
-                targetDB.put(key, "*".join(val_list).encode())
-                updated_num += 1
+                # append update list
+                will_be_updated_list.append([key_list, val_list, col_idx, value])
+            
+        # update rows
+        for row in will_be_updated_list:
+            key_list = row[0]
+            val_list = row[1]
+            col_idx = row[2]
+            value = row[3]
+            val_list[col_idx] = value
+            targetDB.put("*".join(key_list).encode(), "*".join(val_list).encode())
+            updated_num += 1
         targetDB.close()
 
         print(MY_PROMPT + str(updated_num) + " row(s) are updated")
