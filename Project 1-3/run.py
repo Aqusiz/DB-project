@@ -589,7 +589,7 @@ class T(Transformer):
         table_info = pickle.loads(catalogDB.get(table_name.encode()))
         table_columns = list(table_info["columns"].keys())
         column_info = table_info["columns"][column_name]
-        ref_table_list = table_info["referenced_by"]
+        ref_tables = table_info["referenced_by"]
         # check if column exists
         if column_name not in table_columns:
             print(MY_PROMPT + "Update has failed: '" + column_name + "' does not exist")
@@ -647,9 +647,25 @@ class T(Transformer):
                         print(MY_PROMPT + "Update has failed: Primary key duplication")
                         return
                     key_list = new_pk.split("*")
-                # check foreign key constraint
+                    # check tables that reference this table
+                    for ref_table_name in ref_tables:
+                        can_set_null = True
+                        ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
+                        ref_table_columns = ref_table_info["columns"]
+                        for col_name, column_info in ref_table_columns.items():
+                            if column_info["references"] is None:
+                                continue
+                            if column_info["references"].startswith(table_name) and column_info["nullable"] == False:
+                                can_set_null = False
+                                break
+                        if not can_set_null:
+                            not_updated_num += 1
+                            will_be_updated = False
+                            break
+                # check tables that referenced by this table
                 # append update list
-                will_be_updated_list.append([key_list, val_list, col_idx, value])
+                if will_be_updated:
+                    will_be_updated_list.append([key_list, val_list, col_idx, value])
             
         # update rows
         for row in will_be_updated_list:
@@ -766,8 +782,29 @@ def test_comparison_predicate(cols, vals, comp_tree):
         return operand1 != operand2
 
 def test_null_predicate(cols, vals, null_tree):
-
-    return True
+    table_name = ""
+    if null_tree.children[0] is not None:
+        table_name = null_tree.children[0].children[0].value.lower()
+    col_name = null_tree.children[1].children[0].value.lower()
+    if col_name not in [column[2] for column in cols]:
+        raise Exception("WhereColumnNotExist")
+    
+    value = None
+    if table_name == "":
+        for i in range(len(cols)):
+            if cols[i][2] == col_name:
+                value = vals[i]
+    else:
+        for i in range(len(cols)):
+            if cols[i][0] == table_name and cols[i][2] == col_name:
+                value = vals[i]
+            elif cols[i][1] == table_name and cols[i][2] == col_name:
+                value = vals[i]
+    null_operation = null_tree.children[2]
+    if null_operation.children[1] is None:
+        return value == "null"
+    else:
+        return value != "null"
 # 쿼리 규칙
 # 1. 쿼리는 항상 ;(세미콜론)으로 끝난다.
 # 2. ;(세미콜론)이 나오기 전까지 개행문자를 받아도 쿼리를 끝내지 않는다. (대신 PROMPT는 출력되지 않음)
