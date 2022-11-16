@@ -329,6 +329,23 @@ class T(Transformer):
                         new_row.append(row[j])
             joined_rows.append(new_row)
 
+        # redundant column name processing with table name
+        for i in range(len(column_name_list)):
+            marked_indices = []
+            for j in range(len(column_name_list)):
+                if i == j:
+                    continue
+                if column_name_list[i] == column_name_list[j]:
+                    marked_indices.append(j)
+            if len(marked_indices) > 0:
+                marked_indices.append(i)
+                for index in marked_indices:
+                    if column_table_alias_list[index] is not None:
+                        added_name = column_table_alias_list[index]
+                    else:
+                        added_name = column_table_name_list[index]
+                    column_name_list[index] = added_name + "." + column_name_list[index]
+
         # print result
         width = []
         for col in column_name_list:
