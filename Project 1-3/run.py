@@ -575,6 +575,7 @@ class T(Transformer):
         if column_name not in table_columns:
             print(MY_PROMPT + "Update has failed: '" + column_name + "' does not exist")
             return
+        # check type match
         if column_info["type"] == "int":
             try:
                 int_value = int(value)
@@ -596,29 +597,62 @@ class T(Transformer):
         targetDB = db.DB()
         targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
         updated_num = 0
+        not_updated_num = 0
         col_idx = table_columns.index(column_name)
         for key, val in targetDB.items():
+            key_list = key.decode().split("*")
             val_list = val.decode().split("*")
+            
+            # check where clause for each row
+            will_be_updated = False
             if items[6] is not None:
                 cols = []
                 for col in table_columns:
                     cols.append([table_name, None, col, None])
                 test = test_bool_expr(cols, val_list, items[6].children[1])
                 if test is True:
-                    val_list[col_idx] = value
-                    targetDB.put(key, "*".join(val_list).encode())
-                    updated_num += 1
+                    will_be_updated = True
             else:
+                will_be_updated = True
+                
+            if will_be_updated:
+                # check primary key constraint
+                if column_info["primary_key"] == True:
+                    pk_list = table_info["pk_list"]
+                    pk_idx = pk_list.index(column_name)
+                    new_pk = key_list.copy()
+                    new_pk[pk_idx] = value
+                    new_pk = "*".join(new_pk)
+                    if targetDB.has_key(new_pk.encode()):
+                        print(MY_PROMPT + "Update has failed: Primary key duplication")
+                        return
+                # check foreign key constraint
+                foreign_key_test = False
+                if column_info["references"] is not None:
+                    print("check foreign key")
+                    ref_table_name = column_info["references"].split(".")[0]
+                    refDB = db.DB()
+                    refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
+                    for ref_key, ref_val in refDB.items():
+                        ref_val_list = ref_val.decode().split("*")
+                        if value in ref_val_list:
+                            foreign_key_test = True
+                            break
+                    if not foreign_key_test:
+                        not_updated_num += 1
+                        continue
+                # update
                 val_list[col_idx] = value
                 targetDB.put(key, "*".join(val_list).encode())
                 updated_num += 1
         targetDB.close()
 
         print(MY_PROMPT + str(updated_num) + " row(s) are updated")
+        if not_updated_num != 0:
+            print(MY_PROMPT + str(not_updated_num) + " row(s) are not updated due to referential integrity")
 
     def EXIT(self, items):
         raise SystemExit
-
 
 # Helper functions for parsing where clause
 def test_bool_expr(cols, vals, expr_tree):
@@ -764,6 +798,14 @@ def main():
                     print(MY_PROMPT + "Create table has failed: '" + e.args[1] + "' does not exist in column definition")
                 elif err == "TableExistenceError":
                     print(MY_PROMPT + "Create table has failed: table with the same name already exists")
+                elif err == "WhrerColumnNotExist":
+                    print(MY_PROMPT + "Where clause try to reference non existing column")
+                elif err == "WhereTableNotSpecified":
+                    print(MY_PROMPT + "Where clause try to reference tables which are not specified")
+                elif err == "WhereIncomparableError":
+                    print(MY_PROMPT + "Where clause try to compare incomparable values")
+                elif err == "WhereAmbiguousReference":
+                    print(MY_PROMPT + "Where clause contains ambiguous reference")
                 else:
                     print(e)
                 break
