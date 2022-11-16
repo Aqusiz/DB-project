@@ -504,6 +504,7 @@ class T(Transformer):
         targetDB.open('./DB/' + table_name + '.db', dbtype=db.DB_HASH)
         rows = []
         will_be_deleted_keys = []
+        not_deleted_num = 0
         for key, value in targetDB.items():
             value_list = value.decode().split("*")
             rows.append((key.decode(), value_list))
@@ -530,17 +531,32 @@ class T(Transformer):
             ref_tables = table_info["referenced_by"]
             for ref_table_name in ref_tables:
                 can_set_null = True
+                referencing_row_exist = True
+                fk_idx_list = []
                 ref_table_info = pickle.loads(catalogDB.get(ref_table_name.encode()))
                 ref_table_columns = ref_table_info["columns"]
+                idx = -1
                 for col_name, column_info in ref_table_columns.items():
+                    idx += 1
                     if column_info["references"] is None:
                         continue
                     if column_info["references"].startswith(table_name) and column_info["nullable"] == False:
                         can_set_null = False
-                        break
+                        fk_idx_list.append(idx)
+                        continue
                 
-                if not can_set_null:
+                refDB = db.DB()
+                refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
+                for key, value in refDB.items():
+                    value_list = value.decode().split("*")
+                    for idx in fk_idx_list:
+                        if value_list[idx] not in PK_values:
+                            referencing_row_exist = False
+                            break
+
+                if not can_set_null and referencing_row_exist:
                     will_be_deleted_keys[i] = None
+                    not_deleted_num += 1
 
         # delete rows
         deleted_number = 0
@@ -548,6 +564,7 @@ class T(Transformer):
             if key is not None:
                 targetDB.delete(key.encode())
                 pk_list = key.strip("'").split("*")
+                # set null to referencing rows
                 for ref_table_name in ref_tables:
                     refDB = db.DB()
                     refDB.open('./DB/' + ref_table_name + '.db', dbtype=db.DB_HASH)
@@ -563,11 +580,12 @@ class T(Transformer):
                                 value_list[value_list.index(pk_list[i])] = "null"
                             refDB.put(ref_key, "*".join(value_list).encode())
                     refDB.close()
-
                 deleted_number += 1
 
         targetDB.close()
         print(MY_PROMPT + str(deleted_number) + " row(s) are deleted")
+        if not_deleted_num > 0:
+            print(MY_PROMPT + str(not_deleted_num) + " row(s) are not deleted due to referential integrity")
     # items[0] = TOKEN UPDATE
     # items[1] = TREE table_name
     # items[2] = Token SET
