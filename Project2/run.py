@@ -49,7 +49,7 @@ def reset():
                         'PRIMARY KEY(movie_id, audience_id),'
                         'FOREIGN KEY(movie_id) REFERENCES movie(id) ON DELETE CASCADE,'
                         'FOREIGN KEY(audience_id) REFERENCES audience(id))')
-        # Process CSV file and insert data
+        # Process CSV file
         movies = {}
         audiences = {}
         bookings = []
@@ -68,7 +68,7 @@ def reset():
                     'age': row[5]
                 }
             bookings.append((row[0], row[3], row[4], row[5]))
-
+        # Insert data
         for movie in movies.values():
             cursor.execute('INSERT INTO movie (title, director, price) VALUES (%s, %s, %s)',
                             (movie['title'], movie['director'], movie['price']))
@@ -87,7 +87,6 @@ def reset():
             cursor.execute('INSERT INTO booking (movie_id, audience_id) VALUES (%s, %s)',
                             (movie_id, audience_id))
         connection.commit()
-        cursor.execute('SELECT COUNT(*) FROM booking')
 
     f.close()
     print('Initialized database')
@@ -151,11 +150,12 @@ def remove_movie():
     movie_id = input('Movie ID: ')
 
     with connection.cursor(dictionary=True) as cursor:
-        cursor.execute('DELETE FROM movie WHERE id = %s', (movie_id,))
-        connection.commit()
-
-    # error message
-    print(f'Movie {movie_id} does not exist')
+        try:
+            cursor.execute('DELETE FROM movie WHERE id = %s', (movie_id,))
+            connection.commit()
+        except:
+            print(f'Movie {movie_id} does not exist')
+            return
 
     # success message
     print('A movie is successfully removed')
