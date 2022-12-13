@@ -162,9 +162,12 @@ def insert_audience():
     # YOUR CODE GOES HERE
     name = input('Audience name: ')
     gender = input('Audience gender: ')
-    age = input('Audience age: ')
+    age = int(input('Audience age: '))
     
-
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('INSERT INTO audience(name, gender, age) VALUES(%s, %s, %s)', (name, gender, age))
+        connection.commit()
+    
     # success message
     print('An audience is successfully inserted')
     # YOUR CODE GOES HERE
@@ -173,8 +176,12 @@ def insert_audience():
 # Problem 7 (4 pt.)
 def remove_audience():
     # YOUR CODE GOES HERE
-    audience_id = input('Audience ID: ')
+    audience_id = int(input('Audience ID: '))
 
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('DELETE FROM booking WHERE audience_id = %s', (audience_id,))
+        cursor.execute('DELETE FROM audience WHERE id = %s', (audience_id,))
+        connection.commit()
 
     # error message
     print(f'Audience {audience_id} does not exist')
