@@ -184,12 +184,13 @@ def remove_audience():
     audience_id = int(input('Audience ID: '))
 
     with connection.cursor(dictionary=True) as cursor:
-        cursor.execute('DELETE FROM booking WHERE audience_id = %s', (audience_id,))
-        cursor.execute('DELETE FROM audience WHERE id = %s', (audience_id,))
-        connection.commit()
-
-    # error message
-    print(f'Audience {audience_id} does not exist')
+        try:
+            cursor.execute('DELETE FROM booking WHERE audience_id = %s', (audience_id,))
+            cursor.execute('DELETE FROM audience WHERE id = %s', (audience_id,))
+            connection.commit()
+        except:
+            print(f'Audience {audience_id} does not exist')
+            return
 
     # success message
     print('An audience is successfully removed')
