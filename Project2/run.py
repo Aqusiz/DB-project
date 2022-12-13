@@ -260,11 +260,27 @@ def rate_movie():
 # Problem 10 (5 pt.)
 def print_audiences_for_movie():
     # YOUR CODE GOES HERE
-    audience_id = input('Audience ID: ')
+    movie_id = int(input('Movie ID: '))
 
-    
-    # error message
-    print(f'Audience {audience_id} does not exist')
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('SELECT * FROM movie WHERE id = %s', (movie_id,))
+        movie = cursor.fetchall()
+        # error message
+        if len(movie) == 0:
+            print(f'Movie {movie_id} does not exist')
+            return
+        cursor.execute('SELECT id, name, gender, age, rating'
+                        ' FROM audience a JOIN booking b ON a.id = b.audience_id'
+                        ' WHERE b.movie_id = %s', (movie_id,))
+        audiences = cursor.fetchall()
+        print("-" * 80)
+        print(f"{'ID':<5}{'Name':<20}{'Gender':<10}{'Age':<10}{'Rating':<10}")
+        print("-" * 80)
+        for audience in audiences:
+            Rating = audience['rating'] if audience['rating'] is not None else 'None'
+            print(f"{audience['id']:<5}{audience['name']:<20}{audience['gender']:<10}{audience['age']:<10}{Rating:<10}")
+        print("-" * 80)
+
     # YOUR CODE GOES HERE
     pass
 
