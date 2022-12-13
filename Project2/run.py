@@ -10,6 +10,16 @@ connection = connect(
     charset='utf8'
 )
 
+def cosine_similarity(v1, v2):
+    dot_product = 0
+    v1_size = 0
+    v2_size = 0
+    for i in range(v1):
+        dot_product += v1[i] * v2[i]
+        v1_size += v1[i] ** 2
+        v2_size += v2[i] ** 2
+    return dot_product / (v1_size * v2_size) ** 0.5
+
 # Problem 1 (5 pt.)
 def reset():
     f = open('data.csv', 'r', encoding='utf-8')
@@ -39,11 +49,6 @@ def reset():
                         'PRIMARY KEY(movie_id, audience_id),'
                         'FOREIGN KEY(movie_id) REFERENCES movie(id) ON DELETE CASCADE,'
                         'FOREIGN KEY(audience_id) REFERENCES audience(id))')
-        cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
-        cursor.execute('TRUNCATE TABLE booking')
-        cursor.execute('TRUNCATE TABLE movie')
-        cursor.execute('TRUNCATE TABLE audience')
-        cursor.execute('SET FOREIGN_KEY_CHECKS = 1')
         # Process CSV file and insert data
         movies = {}
         audiences = {}
@@ -308,7 +313,7 @@ def print_movies_for_audience():
             Rating = movie['rating'] if movie['rating'] is not None else 'None'
             print(f"{movie['id']:<5}{movie['title']:<50}{movie['director']:<30}{movie['price']:<10}{Rating:<10}")
         print("-" * 110)
-        
+
     # YOUR CODE GOES HERE
     pass
 
@@ -316,14 +321,82 @@ def print_movies_for_audience():
 # Problem 12 (10 pt.)
 def recommend():
     # YOUR CODE GOES HERE
-    movie_id = input('Movie ID: ')
-    audience_id = input('Audience ID: ')
+    audience_id = int(input('Audience ID: '))
+    user_item_matrix = [[]]
+    user_similarity_vector = []
 
+    with connection.cursor(dictionary=True) as cursor:
+        # error message
+        cursor.execute('SELECT * FROM audience WHERE id = %s', (audience_id,))
+        audience = cursor.fetchall()
+        if len(audience) == 0:
+            print(f'Audience {audience_id} does not exist')
+            return
+        # init matrix by 0
+        cursor.execute('SELECT COUNT(*) AS cnt FROM movie')
+        movie_cnt = cursor.fetchall()[0]['cnt']
+        cursor.execute('SELECT COUNT(*) AS cnt FROM audience')
+        audience_cnt = cursor.fetchall()[0]['cnt']
 
-    # error message
-    print(f'Movie {movie_id} does not exist')
-    print(f'Audience {audience_id} does not exist')
-    print('Rating does not exist')
+        user_item_matrix = [[0 for _ in range(movie_cnt + 1)] for _ in range(audience_cnt + 1)]
+        user_similarity_vector = [0 for _ in range(audience_cnt + 1)]
+        # fill user_item_matrix
+        cursor.execute('SELECT audience_id, movie_id, rating FROM booking')
+        bookings = cursor.fetchall()
+        
+        for booking in bookings:
+            user_item_matrix[booking['audience_id']][booking['movie_id']] = booking['rating']
+            user_item_matrix[booking['audience_id']][0] += 1 # count of rated movies
+        # error if the user has not rated any movie
+        if user_item_matrix[audience_id][0] == 0:
+            print('Rating does not exist')
+            return
+        # fill the rest of user_item_matrix by average
+        for i in range(1, audience_cnt + 1):
+            if i == audience_id:
+                continue
+            if user_item_matrix[i][0] == 0:
+                continue
+
+            rate_sum = sum(user_item_matrix[i][1:])
+            for j in range(1, movie_cnt + 1):
+                if user_item_matrix[i][j] == 0:
+                    user_item_matrix[i][j] = rate_sum / user_item_matrix[i][0]
+        # fill user_similarity_vector
+        for i in range(1, audience_cnt + 1):
+            if i == audience_id:
+                user_similarity_vector[i] = 1
+                continue
+
+            user_similarity_vector[i] = cosine_similarity(user_item_matrix[audience_id][1:], user_item_matrix[i][1:])
+        # fill user_item_matrix of audience_id by weighted average
+        for i in range(1, movie_cnt + 1):
+            if user_item_matrix[audience_id][i] != 0:
+                continue
+
+            weighted_sum = 0
+            weight_sum = 0
+            for j in range(1, audience_cnt + 1):
+                if user_item_matrix[j][i] == 0:
+                    continue
+                weighted_sum += user_item_matrix[j][i] * user_similarity_vector[j]
+                weight_sum += user_similarity_vector[j]
+            user_item_matrix[audience_id][i] = weighted_sum / weight_sum
+        # find movie id with max rating
+        max_rated_movie_id = user_item_matrix[audience_id][1:].index(max(user_item_matrix[audience_id][1:]))
+        cursor.execute('SELECT id, title, director, price, rating'
+                        ' FROM movie LEFT JOIN (SELECT movie_id, AVG(rating) AS rating'
+                                                ' FROM booking GROUP BY movie_id) AS avg_rating'
+                                                ' ON movie.id = avg_rating.movie_id'
+                        ' WHERE id = %s', (max_rated_movie_id,))
+        result = cursor.fetchall()[0]
+        # print result
+        print("-" * 110)
+        print(f"{'ID':<5}{'Title':<50}{'Director':<30}{'Avg. Rating':<10}{'Expected rating':<15}")
+        print("-" * 110)
+        print(f"{result['id']:<5}{result['title']:<50}{result['director']:<30}{result['rating']:<10}{user_item_matrix[audience_id][max_rated_movie_id]:<15}")
+        print("-" * 110)
+
     # YOUR CODE GOES HERE
     pass
 
@@ -378,7 +451,9 @@ def main():
             print('Bye!')
             break
         elif menu == 13:
-            reset()
+            ans = input('Are you sure? (y/n) ')
+            if ans == 'y':
+                reset()
         else:
             print('Invalid action')
 
