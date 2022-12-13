@@ -37,7 +37,7 @@ def reset():
                         'audience_id INT NOT NULL,'
                         'rating INT,'
                         'PRIMARY KEY(movie_id, audience_id),'
-                        'FOREIGN KEY(movie_id) REFERENCES movie(id),'
+                        'FOREIGN KEY(movie_id) REFERENCES movie(id) ON DELETE CASCADE,'
                         'FOREIGN KEY(audience_id) REFERENCES audience(id))')
         cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
         cursor.execute('TRUNCATE TABLE booking')
@@ -145,6 +145,9 @@ def remove_movie():
     # YOUR CODE GOES HERE
     movie_id = input('Movie ID: ')
 
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('DELETE FROM movie WHERE id = %s', (movie_id,))
+        connection.commit()
 
     # error message
     print(f'Movie {movie_id} does not exist')
