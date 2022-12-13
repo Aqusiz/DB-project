@@ -150,12 +150,13 @@ def remove_movie():
     movie_id = input('Movie ID: ')
 
     with connection.cursor(dictionary=True) as cursor:
-        try:
-            cursor.execute('DELETE FROM movie WHERE id = %s', (movie_id,))
-            connection.commit()
-        except:
+        cursor.execute('SELECT * FROM movie WHERE id = %s', (movie_id,))
+        movie = cursor.fetchall()
+        if len(movie) == 0:
             print(f'Movie {movie_id} does not exist')
             return
+        cursor.execute('DELETE FROM movie WHERE id = %s', (movie_id,))
+        connection.commit()
 
     # success message
     print('A movie is successfully removed')
@@ -184,13 +185,14 @@ def remove_audience():
     audience_id = int(input('Audience ID: '))
 
     with connection.cursor(dictionary=True) as cursor:
-        try:
-            cursor.execute('DELETE FROM booking WHERE audience_id = %s', (audience_id,))
-            cursor.execute('DELETE FROM audience WHERE id = %s', (audience_id,))
-            connection.commit()
-        except:
+        cursor.execute('SELECT * FROM audience WHERE id = %s', (audience_id,))
+        audience = cursor.fetchall()
+        if len(audience) == 0:
             print(f'Audience {audience_id} does not exist')
             return
+        cursor.execute('DELETE FROM booking WHERE audience_id = %s', (audience_id,))
+        cursor.execute('DELETE FROM audience WHERE id = %s', (audience_id,))
+        connection.commit()
 
     # success message
     print('An audience is successfully removed')
