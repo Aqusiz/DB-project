@@ -228,12 +228,29 @@ def rate_movie():
     movie_id = input('Movie ID: ')
     audience_id = input('Audience ID: ')
     rating = input('Ratings (1~5): ')
+    if rating not in ['1', '2', '3', '4', '5']:
+        print('Wrong value for a rating')
+        return
+    rating = int(rating)
 
-
-    # error message
-    print(f'Movie {movie_id} does not exist')
-    print(f'Audience {audience_id} does not exist')
-    print(f'Wrong value for a rating')
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('SELECT * FROM movie WHERE id = %s', (movie_id,))
+        movie = cursor.fetchall()
+        if len(movie) == 0:
+            print(f'Movie {movie_id} does not exist')
+            return
+        cursor.execute('SELECT * FROM audience WHERE id = %s', (audience_id,))
+        audience = cursor.fetchall()
+        if len(audience) == 0:
+            print(f'Audience {audience_id} does not exist')
+            return
+        cursor.execute('SELECT * FROM booking WHERE movie_id = %s AND audience_id = %s', (movie_id, audience_id))
+        booking = cursor.fetchall()
+        if len(booking) == 0:
+            print('One audience cannot rate a movie without booking it')
+            return
+        cursor.execute('UPDATE booking SET rating = %s WHERE movie_id = %s AND audience_id = %s', (rating, movie_id, audience_id))
+        connection.commit()
 
     # success message
     print('Successfully rated a movie')
