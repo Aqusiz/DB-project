@@ -1,4 +1,5 @@
 from mysql.connector import connect
+import csv
 
 connection = connect(
     host='astronaut.snu.ac.kr',
@@ -11,18 +12,100 @@ connection = connect(
 
 # Problem 1 (5 pt.)
 def reset():
-    # YOUR CODE GOES HERE
+    f = open('data.csv', 'r', encoding='utf-8')
+    rdr = csv.reader(f)
+    next(rdr)
+    with connection.cursor(dictionary=True, buffered=True) as cursor:
+        cursor.execute('DROP TABLE IF EXISTS booking')
+        cursor.execute('DROP TABLE IF EXISTS movie')
+        cursor.execute('DROP TABLE IF EXISTS audience')
+        # Create tables
+        cursor.execute('CREATE TABLE IF NOT EXISTS movie'
+                        '(id INT NOT NULL AUTO_INCREMENT,'
+                        'title VARCHAR(100) NOT NULL,'
+                        'director VARCHAR(100) NOT NULL,'
+                        'price INT NOT NULL,'
+                        'avg_rating FLOAT,'
+                        'PRIMARY KEY(id))')
+        cursor.execute('CREATE TABLE IF NOT EXISTS audience'
+                        '(id INT NOT NULL AUTO_INCREMENT,'
+                        'name VARCHAR(100) NOT NULL,'
+                        'gender VARCHAR(6) NOT NULL,'
+                        'age INT NOT NULL,'
+                        'PRIMARY KEY(id))')
+        cursor.execute('CREATE TABLE IF NOT EXISTS booking'
+                        '(movie_id INT NOT NULL,'
+                        'audience_id INT NOT NULL,'
+                        'rating INT,'
+                        'PRIMARY KEY(movie_id, audience_id),'
+                        'FOREIGN KEY(movie_id) REFERENCES movie(id),'
+                        'FOREIGN KEY(audience_id) REFERENCES audience(id))')
+        cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
+        cursor.execute('TRUNCATE TABLE booking')
+        cursor.execute('TRUNCATE TABLE movie')
+        cursor.execute('TRUNCATE TABLE audience')
+        cursor.execute('SET FOREIGN_KEY_CHECKS = 1')
+        # Process CSV file and insert data
+        movies = {}
+        audiences = {}
+        bookings = []
+        for row in rdr:
+            if row[0] not in movies:
+                movies[row[0]] = {
+                    'title': row[0],
+                    'director': row[1],
+                    'price': row[2]
+                }
+            aud_key = f'{row[3]}_{row[4]}_{row[5]}'
+            if aud_key not in audiences:
+                audiences[aud_key] = {
+                    'name': row[3],
+                    'gender': row[4],
+                    'age': row[5]
+                }
+            bookings.append((row[0], row[3], row[4], row[5]))
 
+        for movie in movies.values():
+            cursor.execute('INSERT INTO movie (title, director, price) VALUES (%s, %s, %s)',
+                            (movie['title'], movie['director'], movie['price']))
+        for audience in audiences.values():
+            cursor.execute('INSERT INTO audience (name, gender, age) VALUES (%s, %s, %s)',
+                            (audience['name'], audience['gender'], audience['age']))
+        connection.commit()
+
+        for booking in bookings:
+            cursor.execute('SELECT id FROM movie WHERE title = %s', (booking[0],))
+            movie_id = cursor.fetchall()[0]['id']
+            cursor.execute('SELECT id FROM audience WHERE'
+                            ' name = %s AND gender = %s AND age = %s',
+                            (booking[1], booking[2], booking[3]))
+            audience_id = cursor.fetchall()[0]['id']
+            cursor.execute('INSERT INTO booking (movie_id, audience_id) VALUES (%s, %s)',
+                            (movie_id, audience_id))
+        connection.commit()
+        cursor.execute('SELECT COUNT(*) FROM booking')
+
+    f.close()
     print('Initialized database')
-    # YOUR CODE GOES HERE
     pass
 
 # Problem 2 (3 pt.)
 def print_movies():
-    # YOUR CODE GOES HERE
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('SELECT id, title, director, price, bookings, ratings'
+                        ' FROM movie LEFT JOIN (SELECT movie_id, COUNT(*) AS bookings,'
+                        ' AVG(rating) AS ratings FROM booking GROUP BY movie_id) AS t'
+                        ' ON movie.id = t.movie_id')
+        movies = cursor.fetchall()
+        print("-" * 120)
+        print(f"{'ID':<5}{'Title':<50}{'Director':<30}{'Price':<10}{'Bookings':<10}{'Ratings':<10}")
+        print("-" * 120)
+        for movie in movies:
+            rating = (movie['ratings'] if movie['ratings'] else "None")
+            print(f"{movie['id']:<5}{movie['title']:<50}{movie['director']:<30}"
+                    f"{movie['price']:<10}{movie['bookings']:<10}{rating:<10}")
+        print("-" * 120)
 
-    
-    # YOUR CODE GOES HERE
     pass
 
 # Problem 3 (3 pt.)
