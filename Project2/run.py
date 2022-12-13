@@ -25,7 +25,6 @@ def reset():
                         'title VARCHAR(100) NOT NULL,'
                         'director VARCHAR(100) NOT NULL,'
                         'price INT NOT NULL,'
-                        'avg_rating FLOAT,'
                         'PRIMARY KEY(id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS audience'
                         '(id INT NOT NULL AUTO_INCREMENT,'
@@ -93,17 +92,18 @@ def reset():
 def print_movies():
     with connection.cursor(dictionary=True) as cursor:
         cursor.execute('SELECT id, title, director, price, bookings, ratings'
-                        ' FROM movie LEFT JOIN (SELECT movie_id, COUNT(*) AS bookings,'
-                        ' AVG(rating) AS ratings FROM booking GROUP BY movie_id) AS t'
-                        ' ON movie.id = t.movie_id')
+                        ' FROM movie LEFT JOIN (SELECT movie_id, COUNT(*) AS bookings, AVG(rating) AS ratings'
+                                                ' FROM booking GROUP BY movie_id) AS t'
+                                                ' ON movie.id = t.movie_id')
         movies = cursor.fetchall()
         print("-" * 120)
         print(f"{'ID':<5}{'Title':<50}{'Director':<30}{'Price':<10}{'Bookings':<10}{'Ratings':<10}")
         print("-" * 120)
         for movie in movies:
+            bookings = (movie['bookings'] if movie['bookings'] else 0)
             rating = (movie['ratings'] if movie['ratings'] else "None")
             print(f"{movie['id']:<5}{movie['title']:<50}{movie['director']:<30}"
-                    f"{movie['price']:<10}{movie['bookings']:<10}{rating:<10}")
+                    f"{movie['price']:<10}{bookings:<10}{rating:<10}")
         print("-" * 120)
 
     pass
@@ -128,8 +128,12 @@ def insert_movie():
     # YOUR CODE GOES HERE
     title = input('Movie title: ')
     director = input('Movie director: ')
-    price = input('Movie price: ')
+    price = int(input('Movie price: '))
     
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('INSERT INTO movie (title, director, price) VALUES (%s, %s, %s)',
+                        (title, director, price))
+        connection.commit()
 
     # success message
     print('A movie is successfully inserted')
