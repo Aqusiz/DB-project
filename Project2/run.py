@@ -110,10 +110,17 @@ def print_movies():
 
 # Problem 3 (3 pt.)
 def print_audiences():
-    # YOUR CODE GOES HERE
+    with connection.cursor(dictionary=True) as cursor:
+        cursor.execute('SELECT * FROM audience')
+        audiences = cursor.fetchall()
+        print("-" * 50)
+        print(f"{'ID':<5}{'Name':<20}{'Gender':<10}{'Age':<10}")
+        print("-" * 50)
+        for audience in audiences:
+            print(f"{audience['id']:<5}{audience['name']:<20}"
+                    f"{audience['gender']:<10}{audience['age']:<10}")
+        print("-" * 50)
 
-    
-    # YOUR CODE GOES HERE
     pass
 
 # Problem 4 (3 pt.)
