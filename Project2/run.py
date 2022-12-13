@@ -194,14 +194,28 @@ def remove_audience():
 # Problem 8 (5 pt.)
 def book_movie():
     # YOUR CODE GOES HERE
-    movie_id = input('Movie ID: ')
-    audience_id = input('Audience ID: ')
+    movie_id = int(input('Movie ID: '))
+    audience_id = int(input('Audience ID: '))
 
-
+    with connection.cursor(dictionary=True) as cursor:
     # error message
-    print(f'Movie {movie_id} does not exist')
-    print(f'Audience {audience_id} does not exist')
-    print('One audience cannot book the same movie twice')
+        cursor.execute('SELECT * FROM movie WHERE id = %s', (movie_id,))
+        movie = cursor.fetchall()
+        if len(movie) == 0:
+            print(f'Movie {movie_id} does not exist')
+            return
+        cursor.execute('SELECT * FROM audience WHERE id = %s', (audience_id,))
+        audience = cursor.fetchall()
+        if len(audience) == 0:
+            print(f'Audience {audience_id} does not exist')
+            return
+        cursor.execute('SELECT * FROM booking WHERE movie_id = %s AND audience_id = %s', (movie_id, audience_id))
+        booking = cursor.fetchall()
+        if len(booking) != 0:
+            print('One audience cannot book the same movie twice')
+            return
+        cursor.execute('INSERT INTO booking(movie_id, audience_id) VALUES(%s, %s)', (movie_id, audience_id))
+        connection.commit()
 
     # success message
     print('Successfully booked a movie')
